@@ -1,0 +1,272 @@
+{% extends 'base.html' %}
+{% block title %}FMS 결과 보기{% endblock %}
+{% block content %}
+
+<div class="bg-white shadow-lg rounded-lg p-6">
+  <div class="flex items-center justify-between mb-6">
+    <h2 class="text-2xl font-bold">FMS 통합 결과</h2>
+    <a href="{{ url_for('index') }}" class="text-indigo-600 hover:text-indigo-800">
+      ← 게시글로
+    </a>
+  </div>
+
+  <!-- KPI 카드 -->
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+    <div class="rounded-lg border p-4">
+      <div class="text-sm text-gray-500">전체 건수</div>
+      <div class="text-2xl font-bold">{{ kpi['total_cnt'] }}</div>
+    </div>
+
+    <div class="rounded-lg border p-4">
+      <div class="text-sm text-gray-500">합격(P)</div>
+      <div class="text-2xl font-bold">{{ kpi['pass_cnt'] }}</div>
+    </div>
+
+    <div class="rounded-lg border p-4">
+      <div class="text-sm text-gray-500">불합격(F)</div>
+      <div class="text-2xl font-bold">{{ kpi['fail_cnt'] }}</div>
+    </div>
+  </div>
+
+  <!-- 차트 (2열) -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    <!-- 왼쪽: 도넛 -->
+    <div class="rounded-lg border p-4">
+      <div class="font-semibold mb-2">합격/불합격 비율</div>
+      <canvas id="pfChart" height="120"></canvas>
+    </div>
+
+    <!-- 오른쪽: 고객사 TOP4 + (아래) 도착일 추이 -->
+    <div class="rounded-lg border p-4">
+      <div class="font-semibold mb-2">고객사 TOP4</div>
+      <canvas id="farmChart" height="120"></canvas>
+
+      <!-- ✅ 고객사 차트 아래 빈공간에 추가 -->
+      <div class="mt-6">
+        <div class="font-semibold mb-2">도착일별 입고 건수 추이</div>
+        <canvas id="arrivalTrendChart" height="120"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ 테이블 컨트롤: 검색 + 부적합 필터 + 카운트 -->
+  <div class="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+    <div class="flex-1">
+      <input
+        id="tableSearch"
+        type="text"
+        placeholder="검색: 고객사 / 주문번호 / 육계번호 / 도착지 / 품종 ..."
+        class="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+      />
+    </div>
+
+    <div class="w-full md:w-56">
+      <select
+        id="failFilter"
+        class="w-full border rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
+      >
+        <option value="all">전체</option>
+        <option value="pass">적합(합격)</option>
+        <option value="fail">부적합(불합격)</option>
+      </select>
+    </div>
+
+    <button
+      id="resetFilter"
+      class="w-full md:w-auto border rounded-lg px-3 py-2 hover:bg-gray-50"
+    >
+      초기화
+    </button>
+
+    <div class="text-sm text-gray-500 md:ml-auto">
+      표시: <span id="visibleCount">0</span> / <span id="totalCount">0</span>
+    </div>
+  </div>
+
+  <!-- ✅ 테이블 -->
+  <div class="overflow-x-auto">
+    {% if results and results|length > 0 %}
+    <table class="min-w-full bg-white" id="resultTable">
+      <thead>
+        <tr class="bg-gray-100 text-gray-600 uppercase text-sm">
+          {% for column in results[0].keys() %}
+          <th class="py-3 px-4 text-left">{{ column }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+
+      <tbody class="text-gray-700" id="resultTbody">
+        {% for row in results %}
+
+          {# ✅ 부적합 판정: 데이터가 Y/N, 1/0, 부적합/적합 등으로 와도 최대한 커버 #}
+          {% set fail_raw = row['부적합여부'] if '부적합여부' in row else '' %}
+          {% set fail_str = (fail_raw|string)|lower %}
+          {% set is_fail = (fail_str in ['y','1','부적합','불합격','f','true','t']) %}
+
+          <tr
+            class="border-b border-gray-200 hover:bg-gray-50 {% if is_fail %} bg-red-50 {% endif %}"
+            data-fail="{{ 'fail' if is_fail else 'pass' }}"
+            data-search="{{
+              (row['육계번호']|default('') ~ ' ' ~
+               row['주문번호']|default('') ~ ' ' ~
+               row['고객사']|default('') ~ ' ' ~
+               row['도착지']|default('') ~ ' ' ~
+               row['품종']|default(''))|lower
+            }}"
+          >
+            {% for key, value in row.items() %}
+              {% if key == '부적합여부' %}
+                <td class="py-2 px-4 whitespace-nowrap">
+                  {% if is_fail %}
+                    <span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded bg-red-100 text-red-700">
+                      부적합
+                    </span>
+                  {% else %}
+                    <span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded bg-green-100 text-green-700">
+                      적합
+                    </span>
+                  {% endif %}
+                </td>
+              {% else %}
+                <td class="py-2 px-4 whitespace-nowrap">{{ value }}</td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="text-gray-500">표시할 결과가 없습니다.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+async function drawCharts() {
+  // 1) 합격/불합격 도넛
+  const pfRes = await fetch("{{ url_for('api_fms_pass_fail') }}");
+  const pfData = await pfRes.json();
+
+  new Chart(document.getElementById('pfChart'), {
+    type: 'doughnut',
+    data: {
+      labels: pfData.map(x => x.pass_fail),
+      datasets: [{ data: pfData.map(x => x.cnt) }]
+    }
+  });
+
+  // 2) 고객사 TOP4
+  const farmRes = await fetch("{{ url_for('api_fms_top_farms') }}");
+  const farmDataAll = await farmRes.json();
+  const farmData = farmDataAll.slice(0, 4);
+
+  new Chart(document.getElementById('farmChart'), {
+    type: 'bar',
+    data: {
+      labels: farmData.map(x => x.farm),
+      datasets: [{
+        label: '입고 건수',
+        data: farmData.map(x => x.cnt),
+        backgroundColor: [
+          'rgba(59, 130, 246, 0.6)',
+          'rgba(16, 185, 129, 0.6)',
+          'rgba(234, 179, 8, 0.6)',
+          'rgba(239, 68, 68, 0.6)'
+        ],
+        hoverBackgroundColor: [
+          'rgba(59, 130, 246, 0.9)',
+          'rgba(16, 185, 129, 0.9)',
+          'rgba(234, 179, 8, 0.9)',
+          'rgba(239, 68, 68, 0.9)'
+        ],
+        borderRadius: 8,
+        borderSkipped: false
+      }]
+    },
+    options: {
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.raw} 건` } }
+      },
+      scales: {
+        y: { beginAtZero: true, ticks: { stepSize: 2 } }
+      }
+    }
+  });
+
+  // 3) 도착일별 입고 건수 추이
+  const arrivalRes = await fetch("{{ url_for('api_fms_arrival_trend') }}");
+  const arrivalData = await arrivalRes.json();
+
+  new Chart(document.getElementById('arrivalTrendChart'), {
+    type: 'line',
+    data: {
+      labels: arrivalData.map(x => x.arrival_date),
+      datasets: [{
+        label: '입고 건수',
+        data: arrivalData.map(x => x.cnt),
+        tension: 0.3,
+        fill: false
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true } }
+    }
+  });
+}
+
+drawCharts();
+
+// ✅ 테이블 검색/필터
+(function () {
+  const searchEl = document.getElementById('tableSearch');
+  const filterEl = document.getElementById('failFilter');
+  const resetEl  = document.getElementById('resetFilter');
+  const tbody    = document.getElementById('resultTbody');
+  const visibleCountEl = document.getElementById('visibleCount');
+  const totalCountEl   = document.getElementById('totalCount');
+
+  if (!tbody) return;
+
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  totalCountEl.textContent = rows.length;
+
+  function applyFilters() {
+    const q = (searchEl.value || '').trim().toLowerCase();
+    const f = filterEl.value; // all | pass | fail
+    let visible = 0;
+
+    for (const tr of rows) {
+      const status = tr.dataset.fail; // "fail" or "pass"
+      const hay = tr.dataset.search || '';
+
+      const matchText = !q || hay.includes(q);
+      const matchFail =
+        (f === 'all') ||
+        (f === 'fail' && status === 'fail') ||
+        (f === 'pass' && status === 'pass');
+
+      const show = matchText && matchFail;
+      tr.style.display = show ? '' : 'none';
+      if (show) visible++;
+    }
+
+    visibleCountEl.textContent = visible;
+  }
+
+  searchEl.addEventListener('input', applyFilters);
+  filterEl.addEventListener('change', applyFilters);
+  resetEl.addEventListener('click', () => {
+    searchEl.value = '';
+    filterEl.value = 'all';
+    applyFilters();
+  });
+
+  applyFilters();
+})();
+</script>
+
+{% endblock %}
