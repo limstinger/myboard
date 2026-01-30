@@ -48,4 +48,5 @@ Flask 기반 게시판 서비스에 **농장 물류(FMS) 데이터를 시각화�
 - `/` : 게시판 메인 페이지
 - `/fms_result` : FMS 통합 대시보드 페이지
 
-> 아래에 FMS 대시보드 화면 캡처를 그대로 붙여넣어도 됩니다.
+<img width="1233" height="420" alt="image" src="https://github.com/user-attachments/assets/46172d16-341b-45dd-8520-211e96144e1a" />
+
