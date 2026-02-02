@@ -21,7 +21,9 @@ def get_db_connection():
         dbname=os.getenv('DB_NAME'),
         user=os.getenv('DB_USER'),
         password=os.getenv('DB_PASSWORD'),
-        # sslmode='require' #Azure를 위해 반드시 추가
+        sslmode='require', #Azure를 위해 반드시 추가
+        connect_timeout=5,
+        options = '-c timezone=Asia/Seoul'
     )
     print('get_db_connection', conn)
     conn.autocommit = True
@@ -30,7 +32,11 @@ def get_db_connection():
 @app.route('/')
 def index():
     # 1. 데이터 베이스에 접속
-    conn = get_db_connection()
+    try:
+        conn = get_db_connection()
+    except Exception as e:
+        return f"DB connect failed: {e}", 500
+    # conn = get_db_connection()
     print('get_db_connection', conn)
     cursor = conn.cursor(cursor_factory=DictCursor)
     # 2. SELECT
@@ -281,5 +287,5 @@ def like_post(post_id):
     return redirect(url_for('view_post', post_id=post_id))
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()
 
